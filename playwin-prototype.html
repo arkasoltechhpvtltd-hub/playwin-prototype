@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlayWin — prototype</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.24.0/dist/tabler-icons.min.css">
+<style>
+  :root{
+    --bg:#eef0f4; --card:#ffffff; --surface:#f4f5f8; --border:#e3e5ea;
+    --text:#1c1e26; --muted:#6b6f7a; --faint:#9aa0ab;
+    --accent:#4f46e5; --accent-bg:#eceafd; --accent-text:#4338ca;
+    --won-bg:#e7f6ec; --won-text:#187a3d;
+    --mono:'SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; background:var(--bg);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    color:var(--text); display:flex; flex-direction:column; align-items:center;
+    padding:32px 16px 48px;
+  }
+  .intro{max-width:340px; text-align:center; margin-bottom:22px;}
+  .intro h1{font-size:20px; font-weight:600; margin:0 0 6px;}
+  .intro p{font-size:13px; color:var(--muted); margin:0; line-height:1.6;}
+  .phone{
+    width:340px; max-width:100%; background:var(--card);
+    border:1px solid var(--border); border-radius:32px; overflow:hidden;
+    box-shadow:0 12px 40px rgba(20,22,30,.12);
+  }
+  .topbar{
+    padding:18px 20px 14px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .topbar .name{font-size:17px; font-weight:600;}
+  .topbar .sub{font-size:12px; color:var(--muted); margin-top:2px;}
+  .chip{
+    display:flex; align-items:center; gap:6px; background:var(--accent-bg);
+    color:var(--accent-text); padding:7px 13px; border-radius:20px;
+    font-size:13px; font-weight:600;
+  }
+  .screen{padding:16px 18px 10px; min-height:410px;}
+  .hidden{display:none;}
+  .banner{
+    background:var(--accent-bg); border-radius:16px; padding:15px 16px;
+    margin-bottom:18px; display:flex; align-items:center; gap:13px;
+  }
+  .banner i{font-size:27px; color:var(--accent-text);}
+  .banner .b-title{font-size:14px; font-weight:600; color:var(--accent-text);}
+  .banner .b-sub{font-size:12px; color:var(--accent-text); opacity:.82; margin-top:2px;}
+  .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:11px;}
+  .tile{
+    background:var(--surface); border-radius:14px; padding:14px 6px;
+    text-align:center; cursor:pointer; transition:transform .12s, background .12s;
+    border:1px solid transparent;
+  }
+  .tile:hover{background:#eceef2; transform:translateY(-2px);}
+  .tile:active{transform:translateY(0);}
+  .tile i{font-size:27px; color:var(--text);}
+  .tile span{display:block; font-size:12px; margin-top:7px; color:var(--text);}
+  .section-title{font-size:14px; font-weight:600; margin:2px 0 12px;}
+  .coupon{background:var(--surface); border-radius:14px; padding:13px 15px; margin-bottom:11px;}
+  .coupon .row{display:flex; justify-content:space-between; align-items:center;}
+  .coupon .c-name{font-size:14px; font-weight:600;}
+  .coupon .c-meta{font-size:12px; color:var(--muted); margin-top:4px;}
+  .badge-won{font-size:11px; background:var(--won-bg); color:var(--won-text); padding:3px 9px; border-radius:11px; font-weight:600;}
+  .code-row{margin-top:10px; display:flex; gap:8px; align-items:center;}
+  .code{
+    font-family:var(--mono); font-size:12px; background:var(--card);
+    border:1px solid var(--border); padding:5px 9px; border-radius:7px; letter-spacing:.5px;
+  }
+  .btn{
+    font-size:12px; font-weight:500; padding:6px 13px; border-radius:8px;
+    border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer;
+  }
+  .btn:hover{background:var(--surface);}
+  .coupon.locked{opacity:.6;}
+  .profile{text-align:center; padding:22px 18px;}
+  .avatar{
+    width:58px; height:58px; border-radius:50%; background:var(--accent-bg); color:var(--accent-text);
+    display:flex; align-items:center; justify-content:center; font-size:19px; font-weight:600; margin:6px auto 11px;
+  }
+  .p-name{font-size:15px; font-weight:600;}
+  .p-sub{font-size:12px; color:var(--muted); margin-bottom:18px;}
+  .p-rows{text-align:left; font-size:13px; color:var(--muted);}
+  .p-rows .pr{padding:11px 0; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;}
+  .p-rows .pr:last-child{border-bottom:none;}
+  .p-rows .pr b{color:var(--text); font-weight:500;}
+  .nav{display:flex; border-top:1px solid var(--border);}
+  .nav .tab{flex:1; text-align:center; padding:11px 0; cursor:pointer; color:var(--faint); transition:color .12s;}
+  .nav .tab i{font-size:23px;}
+  .nav .tab span{display:block; font-size:11px; margin-top:2px;}
+  .nav .tab.active{color:var(--accent);}
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#15171c; --card:#20232b; --surface:#282c36; --border:#333844;
+      --text:#eceef3; --muted:#a2a8b4; --faint:#6c7280;
+      --accent:#8b83f5; --accent-bg:#2c2b52; --accent-text:#b6b0fb;
+      --won-bg:#1d3a29; --won-text:#79d29b;
+    }
+    body{background:var(--bg);}
+  }
+</style>
+</head>
+<body>
+  <div class="intro">
+    <h1>PlayWin</h1>
+    <p>Interactive prototype — tap the bottom navigation to move between the game lobby, coupon wallet, and profile.</p>
+  </div>
+
+  <div class="phone">
+    <div class="topbar">
+      <div>
+        <div class="name">PlayWin</div>
+        <div class="sub">Free to play · win coupons</div>
+      </div>
+      <div class="chip"><i class="ti ti-ticket"></i>12</div>
+    </div>
+
+    <div id="screen-games" class="screen">
+      <div class="banner">
+        <i class="ti ti-gift"></i>
+        <div>
+          <div class="b-title">Win today's featured coupon</div>
+          <div class="b-sub">Top a Bingo room → 30% off coffee</div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="tile"><i class="ti ti-dice-5"></i><span>Ludo</span></div>
+        <div class="tile"><i class="ti ti-chess"></i><span>Chess</span></div>
+        <div class="tile"><i class="ti ti-target"></i><span>Carrom</span></div>
+        <div class="tile"><i class="ti ti-circle-dot"></i><span>8-Ball</span></div>
+        <div class="tile"><i class="ti ti-cards"></i><span>Rummy</span></div>
+        <div class="tile"><i class="ti ti-grid-dots"></i><span>Bingo</span></div>
+        <div class="tile"><i class="ti ti-bulb"></i><span>Trivia</span></div>
+        <div class="tile"><i class="ti ti-abc"></i><span>Word Hunt</span></div>
+        <div class="tile"><i class="ti ti-columns-3"></i><span>Connect 4</span></div>
+      </div>
+    </div>
+
+    <div id="screen-coupons" class="screen hidden">
+      <div class="section-title">Your coupons</div>
+      <div class="coupon">
+        <div class="row">
+          <div class="c-name">Brew Bar · 30% off</div>
+          <span class="badge-won">Won</span>
+        </div>
+        <div class="c-meta">Won in Bingo · expires in 5 days</div>
+        <div class="code-row"><span class="code">BREW30-8KQ2</span><button class="btn">Redeem</button></div>
+      </div>
+      <div class="coupon">
+        <div class="row">
+          <div class="c-name">Snack Co · ₹50 off</div>
+          <span class="badge-won">Won</span>
+        </div>
+        <div class="c-meta">Won in Trivia · expires in 12 days</div>
+        <div class="code-row"><span class="code">SNACK50-VZ9</span><button class="btn">Redeem</button></div>
+      </div>
+      <div class="coupon locked">
+        <div class="c-name">Ride Hub · ₹100 off</div>
+        <div class="c-meta">Win any Chess match to unlock</div>
+      </div>
+    </div>
+
+    <div id="screen-profile" class="screen hidden">
+      <div class="profile">
+        <div class="avatar">AK</div>
+        <div class="p-name">Arjun K.</div>
+        <div class="p-sub">Age verified · 2 coupons won</div>
+        <div class="p-rows">
+          <div class="pr"><span>Playtime today</span><b>42 min</b></div>
+          <div class="pr"><span>Daily limit</span><b>90 min</b></div>
+          <div class="pr"><span>Help and grievance</span><i class="ti ti-chevron-right"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <div class="tab active" data-t="games" onclick="switchTab('games')"><i class="ti ti-device-gamepad-2"></i><span>Games</span></div>
+      <div class="tab" data-t="coupons" onclick="switchTab('coupons')"><i class="ti ti-ticket"></i><span>Coupons</span></div>
+      <div class="tab" data-t="profile" onclick="switchTab('profile')"><i class="ti ti-user"></i><span>Profile</span></div>
+    </div>
+  </div>
+
+<script>
+  function switchTab(t){
+    ['games','coupons','profile'].forEach(function(s){
+      document.getElementById('screen-'+s).classList.toggle('hidden', s!==t);
+    });
+    document.querySelectorAll('.nav .tab').forEach(function(n){
+      n.classList.toggle('active', n.dataset.t===t);
+    });
+  }
+</script>
+</body>
+</html>
