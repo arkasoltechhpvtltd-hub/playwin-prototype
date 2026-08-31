@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlayWin — Chess</title>
+<style>
+  :root{--bg:#eef0f4;--card:#fff;--border:#e3e5ea;--text:#1c1e26;--muted:#6b6f7a;
+    --accent:#4f46e5;--accent-text:#4338ca;--won:#187a3d;--won-bg:#e7f6ec;
+    --light:#eddfc9;--dark:#a97b52;--sel:#f2d675;--move:rgba(79,70,229,.45);--check:#e57373;}
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center;padding:20px 12px 40px;}
+  .wrap{width:100%;max-width:440px;}
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  a.back{color:var(--accent-text);text-decoration:none;font-size:14px;font-weight:500;}
+  .btn{font-size:13px;font-weight:500;padding:8px 14px;border-radius:9px;border:1px solid var(--border);
+    background:var(--card);color:var(--text);cursor:pointer;}
+  .btn:hover{background:#f4f5f8;}
+  .status{font-size:14px;font-weight:600;padding:8px 14px;border-radius:20px;background:var(--card);
+    border:1px solid var(--border);display:inline-flex;align-items:center;gap:8px;margin-bottom:12px;}
+  .dot{width:12px;height:12px;border-radius:50%;border:1px solid #999;}
+  .win-banner{background:var(--won-bg);color:var(--won);border-radius:12px;padding:12px 14px;
+    font-size:14px;font-weight:600;margin-bottom:12px;display:none;text-align:center;}
+  .board{display:grid;grid-template-columns:repeat(8,1fr);border-radius:10px;overflow:hidden;
+    box-shadow:0 10px 30px rgba(20,22,30,.18);user-select:none;}
+  .sq{aspect-ratio:1;display:flex;align-items:center;justify-content:center;position:relative;
+    font-size:min(7vw,30px);line-height:1;cursor:pointer;}
+  .sq.l{background:var(--light);} .sq.d{background:var(--dark);}
+  .sq.sel{background:var(--sel)!important;}
+  .sq.check{background:var(--check)!important;}
+  .sq .dotmove{position:absolute;width:26%;height:26%;border-radius:50%;background:var(--move);}
+  .sq.cap .dotmove{width:82%;height:82%;background:transparent;border:3px solid var(--move);border-radius:50%;}
+  .piece{filter:drop-shadow(0 1px 1px rgba(0,0,0,.25));}
+  .foot{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.6;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a class="back" href="../index.html">← PlayWin</a>
+    <button class="btn" onclick="reset()">New game</button></div>
+  <div class="status" id="status"><span class="dot" style="background:#fff"></span>White to move</div>
+  <div class="win-banner" id="win"></div>
+  <div class="board" id="board"></div>
+  <div class="foot">Two players take turns. Tap a piece to see its legal moves, then tap a highlighted square. Castling, en passant and promotion (to queen) all work. Checkmate wins a coupon.</div>
+</div>
+<script>
+const GLYPH={wK:'♔',wQ:'♕',wR:'♖',wB:'♗',wN:'♘',wP:'♙',bK:'♚',bQ:'♛',bR:'♜',bB:'♝',bN:'♞',bP:'♟'};
+const START=[
+ ['bR','bN','bB','bQ','bK','bB','bN','bR'],
+ ['bP','bP','bP','bP','bP','bP','bP','bP'],
+ [null,null,null,null,null,null,null,null],
+ [null,null,null,null,null,null,null,null],
+ [null,null,null,null,null,null,null,null],
+ [null,null,null,null,null,null,null,null],
+ ['wP','wP','wP','wP','wP','wP','wP','wP'],
+ ['wR','wN','wB','wQ','wK','wB','wN','wR']
+];
+let board, turn, ep, castle, selected, legal, over;
+const boardEl=document.getElementById('board');
+
+function reset(){
+  board=START.map(r=>r.slice());
+  turn='w'; ep=null; castle={wK:true,wQ:true,bK:true,bQ:true};
+  selected=null; legal=[]; over=false;
+  document.getElementById('win').style.display='none';
+  render(); status();
+}
+const inB=(r,c)=>r>=0&&r<8&&c>=0&&c<8;
+const clone=b=>b.map(r=>r.slice());
+const color=p=>p?p[0]:null, kind=p=>p?p[1]:null;
+
+function kingPos(b,cl){ for(let r=0;r<8;r++)for(let c=0;c<8;c++) if(b[r][c]===cl+'K') return [r,c]; return null; }
+
+function attacked(b,tr,tc,by){
+  // pawns
+  const dr = by==='w' ? 1 : -1; // a 'by' pawn attacking (tr,tc) sits at tr+dr
+  for(const dc of [-1,1]){ const r=tr+dr,c=tc+dc; if(inB(r,c)&&b[r][c]===by+'P') return true; }
+  // knights
+  for(const [a,d] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]){
+    const r=tr+a,c=tc+d; if(inB(r,c)&&b[r][c]===by+'N') return true; }
+  // king
+  for(let a=-1;a<=1;a++)for(let d=-1;d<=1;d++){ if(!a&&!d)continue; const r=tr+a,c=tc+d;
+    if(inB(r,c)&&b[r][c]===by+'K') return true; }
+  // sliders
+  const diag=[[-1,-1],[-1,1],[1,-1],[1,1]], orth=[[-1,0],[1,0],[0,-1],[0,1]];
+  for(const [a,d] of diag){ let r=tr+a,c=tc+d; while(inB(r,c)){ const p=b[r][c];
+    if(p){ if(color(p)===by&&(kind(p)==='B'||kind(p)==='Q')) return true; break; } r+=a;c+=d; } }
+  for(const [a,d] of orth){ let r=tr+a,c=tc+d; while(inB(r,c)){ const p=b[r][c];
+    if(p){ if(color(p)===by&&(kind(p)==='R'||kind(p)==='Q')) return true; break; } r+=a;c+=d; } }
+  return false;
+}
+function inCheck(b,cl){ const k=kingPos(b,cl); return k?attacked(b,k[0],k[1],cl==='w'?'b':'w'):false; }
+
+function pseudo(b,r,c,epv,cas){
+  const p=b[r][c]; if(!p) return []; const cl=color(p), en=cl==='w'?'b':'w', out=[];
+  const add=(tr,tc,flag)=>out.push({r:tr,c:tc,flag});
+  if(kind(p)==='P'){
+    const dr=cl==='w'?-1:1, start=cl==='w'?6:1, last=cl==='w'?0:7;
+    if(inB(r+dr,c)&&!b[r+dr][c]){ add(r+dr,c, r+dr===last?'promo':null);
+      if(r===start&&!b[r+2*dr][c]) add(r+2*dr,c,'two'); }
+    for(const dc of [-1,1]){ const tr=r+dr,tc=c+dc; if(!inB(tr,tc))continue;
+      const t=b[tr][tc];
+      if(t&&color(t)===en) add(tr,tc, tr===last?'promo':null);
+      else if(epv&&epv[0]===tr&&epv[1]===tc) add(tr,tc,'ep');
+    }
+  } else if(kind(p)==='N'){
+    for(const [a,d] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]){
+      const tr=r+a,tc=c+d; if(inB(tr,tc)&&color(b[tr][tc])!==cl) add(tr,tc); }
+  } else if(kind(p)==='K'){
+    for(let a=-1;a<=1;a++)for(let d=-1;d<=1;d++){ if(!a&&!d)continue; const tr=r+a,tc=c+d;
+      if(inB(tr,tc)&&color(b[tr][tc])!==cl) add(tr,tc); }
+    // castling
+    const row=cl==='w'?7:0;
+    if(r===row&&c===4&&!inCheck(b,cl)){
+      if(cas[cl+'K']&&!b[row][5]&&!b[row][6]&&b[row][7]===cl+'R'
+        && !attacked(b,row,5,en)&&!attacked(b,row,6,en)) add(row,6,'castleK');
+      if(cas[cl+'Q']&&!b[row][1]&&!b[row][2]&&!b[row][3]&&b[row][0]===cl+'R'
+        && !attacked(b,row,3,en)&&!attacked(b,row,2,en)) add(row,2,'castleQ');
+    }
+  } else {
+    const dirs = kind(p)==='B'?[[-1,-1],[-1,1],[1,-1],[1,1]]
+      : kind(p)==='R'?[[-1,0],[1,0],[0,-1],[0,1]]
+      : [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]];
+    for(const [a,d] of dirs){ let tr=r+a,tc=c+d; while(inB(tr,tc)){ const t=b[tr][tc];
+      if(!t) add(tr,tc); else { if(color(t)!==cl) add(tr,tc); break; } tr+=a;tc+=d; } }
+  }
+  return out;
+}
+function applyTo(b,fr,fc,tr,tc,flag){
+  const p=b[fr][fc], cl=color(p);
+  if(flag==='ep'){ b[fr][tc]=null; }
+  b[tr][tc]= flag==='promo' ? cl+'Q' : p;
+  b[fr][fc]=null;
+  if(flag==='castleK'){ const row=fr; b[row][5]=b[row][7]; b[row][7]=null; }
+  if(flag==='castleQ'){ const row=fr; b[row][3]=b[row][0]; b[row][0]=null; }
+}
+function legalFor(b,r,c,epv,cas){
+  const cl=color(b[r][c]); const res=[];
+  for(const m of pseudo(b,r,c,epv,cas)){
+    const t=clone(b); applyTo(t,r,c,m.r,m.c,m.flag);
+    if(!inCheck(t,cl)) res.push(m);
+  }
+  return res;
+}
+function anyLegal(b,cl,epv,cas){
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++) if(color(b[r][c])===cl)
+    if(legalFor(b,r,c,epv,cas).length) return true;
+  return false;
+}
+function render(){
+  boardEl.innerHTML='';
+  const chk = inCheck(board,turn) ? kingPos(board,turn) : null;
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+    const sq=document.createElement('div');
+    sq.className='sq '+((r+c)%2?'d':'l');
+    if(selected&&selected[0]===r&&selected[1]===c) sq.classList.add('sel');
+    if(chk&&chk[0]===r&&chk[1]===c) sq.classList.add('check');
+    const p=board[r][c];
+    if(p){ const s=document.createElement('span'); s.className='piece'; s.textContent=GLYPH[p]; sq.appendChild(s); }
+    const mv=legal.find(m=>m.r===r&&m.c===c);
+    if(mv){ if(board[r][c]||mv.flag==='ep') sq.classList.add('cap');
+      const d=document.createElement('span'); d.className='dotmove'; sq.appendChild(d); }
+    sq.onclick=()=>click(r,c);
+    boardEl.appendChild(sq);
+  }
+}
+function click(r,c){
+  if(over) return;
+  const mv = legal.find(m=>m.r===r&&m.c===c);
+  if(mv){ doMove(selected[0],selected[1],r,c,mv.flag); return; }
+  if(color(board[r][c])===turn){ selected=[r,c]; legal=legalFor(board,r,c,ep,castle); render(); }
+  else { selected=null; legal=[]; render(); }
+}
+function doMove(fr,fc,tr,tc,flag){
+  const p=board[fr][fc];
+  // update castling rights
+  if(p==='wK'){castle.wK=castle.wQ=false;} if(p==='bK'){castle.bK=castle.bQ=false;}
+  if(fr===7&&fc===0) castle.wQ=false; if(fr===7&&fc===7) castle.wK=false;
+  if(fr===0&&fc===0) castle.bQ=false; if(fr===0&&fc===7) castle.bK=false;
+  if(tr===7&&tc===0) castle.wQ=false; if(tr===7&&tc===7) castle.wK=false;
+  if(tr===0&&tc===0) castle.bQ=false; if(tr===0&&tc===7) castle.bK=false;
+  applyTo(board,fr,fc,tr,tc,flag);
+  ep = flag==='two' ? [(fr+tr)/2, fc] : null;
+  turn = turn==='w'?'b':'w';
+  selected=null; legal=[];
+  render(); status();
+}
+function status(){
+  const st=document.getElementById('status');
+  const nm=turn==='w'?'White':'Black';
+  st.innerHTML='<span class="dot" style="background:'+(turn==='w'?'#fff':'#222')+'"></span>'+nm+' to move';
+  const chk=inCheck(board,turn), has=anyLegal(board,turn,ep,castle);
+  if(!has){
+    over=true;
+    const w=document.getElementById('win'); w.style.display='block';
+    if(chk){ const winner=turn==='w'?'Black':'White';
+      w.textContent='🏆 Checkmate! '+winner+' wins — a coupon would be granted here.'; }
+    else { w.style.color='var(--muted)'; w.style.background='#f0f0f4';
+      w.textContent='Stalemate — draw. Tap New game.'; }
+  } else if(chk){
+    st.innerHTML+=' · <span style="color:#c0392b">check</span>';
+  }
+}
+reset();
+</script>
+</body>
+</html>
