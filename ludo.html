@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlayWin — Ludo</title>
+<style>
+  :root{--bg:#eef0f4;--card:#fff;--border:#e3e5ea;--text:#1c1e26;--muted:#6b6f7a;
+    --accent:#4f46e5;--accent-text:#4338ca;--won:#187a3d;--won-bg:#e7f6ec;}
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center;padding:20px 12px 40px;}
+  .wrap{width:100%;max-width:470px;}
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  a.back{color:var(--accent-text);text-decoration:none;font-size:14px;font-weight:500;}
+  .btn{font-size:13px;font-weight:500;padding:8px 14px;border-radius:9px;border:1px solid var(--border);
+    background:var(--card);color:var(--text);cursor:pointer;}
+  .btn:hover{background:#f4f5f8;}
+  .hud{display:flex;align-items:center;gap:12px;justify-content:space-between;margin-bottom:10px;}
+  .turn{font-size:14px;font-weight:600;padding:8px 13px;border-radius:20px;background:var(--card);border:1px solid var(--border);}
+  .dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;vertical-align:middle;}
+  .dice{width:52px;height:52px;border-radius:12px;background:var(--card);border:2px solid var(--border);
+    font-size:26px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--accent-text);}
+  .dice.disabled{opacity:.5;cursor:default;}
+  .msg{font-size:13px;color:var(--muted);flex:1;text-align:center;min-width:100px;}
+  .win-banner{background:var(--won-bg);color:var(--won);border-radius:12px;padding:12px 14px;
+    font-size:14px;font-weight:600;margin-bottom:12px;display:none;text-align:center;}
+  canvas{display:block;width:100%;height:auto;touch-action:manipulation;border-radius:12px;
+    box-shadow:0 10px 30px rgba(20,22,30,.16);}
+  .foot{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.6;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a class="back" href="../index.html">← PlayWin</a>
+    <button class="btn" onclick="reset()">New game</button></div>
+  <div class="win-banner" id="win"></div>
+  <div class="hud">
+    <div class="turn" id="turn"><span class="dot" style="background:#e5484d"></span>Red's turn</div>
+    <div class="msg" id="msg">Roll to start</div>
+    <div class="dice" id="dice" onclick="roll()">🎲</div>
+  </div>
+  <canvas id="c" width="450" height="450"></canvas>
+  <div class="foot">Four players, same device. Roll the dice, then tap one of your glowing tokens to move it. You need a 6 to leave home; a 6 rolls again. Land on an opponent to send them back. Get all 4 tokens home to win a coupon.</div>
+</div>
+<script>
+const CS=30;
+const COLORS={red:'#e5484d',green:'#2e9e4f',yellow:'#e0a020',blue:'#2f6fdb'};
+const ORDER=['red','green','yellow','blue'];
+const PATH=[[6,1],[6,2],[6,3],[6,4],[6,5],[5,6],[4,6],[3,6],[2,6],[1,6],[0,6],[0,7],[0,8],
+[1,8],[2,8],[3,8],[4,8],[5,8],[6,9],[6,10],[6,11],[6,12],[6,13],[6,14],[7,14],[8,14],
+[8,13],[8,12],[8,11],[8,10],[8,9],[9,8],[10,8],[11,8],[12,8],[13,8],[14,8],[14,7],
+[14,6],[13,6],[12,6],[11,6],[10,6],[9,6],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0],[7,0],[6,0]];
+const START={red:0,green:13,yellow:26,blue:39};
+const HOME={
+  red:[[7,1],[7,2],[7,3],[7,4],[7,5],[7,6]],
+  green:[[1,7],[2,7],[3,7],[4,7],[5,7],[6,7]],
+  yellow:[[7,13],[7,12],[7,11],[7,10],[7,9],[7,8]],
+  blue:[[13,7],[12,7],[11,7],[10,7],[9,7],[8,7]]
+};
+const SAFE=new Set([0,8,13,21,26,34,39,47]);
+const YARD={
+  red:[[1,1],[1,4],[4,1],[4,4]], green:[[1,10],[1,13],[4,10],[4,13]],
+  yellow:[[10,10],[10,13],[13,10],[13,13]], blue:[[10,1],[10,4],[13,1],[13,4]]
+};
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+let pos, cur, dice, phase, over, movable;
+
+function reset(){
+  pos={red:[-1,-1,-1,-1],green:[-1,-1,-1,-1],yellow:[-1,-1,-1,-1],blue:[-1,-1,-1,-1]};
+  cur=0; dice=null; phase='roll'; over=false; movable=[];
+  document.getElementById('win').style.display='none';
+  document.getElementById('dice').textContent='🎲';
+  document.getElementById('dice').classList.remove('disabled');
+  updateTurn('Roll to start'); draw();
+}
+function cellOf(color,p){
+  if(p<0) return null;
+  if(p<=50) return PATH[(START[color]+p)%52];
+  return HOME[color][p-51];
+}
+function isSafe(color,p){ if(p<0||p>50) return true; return SAFE.has((START[color]+p)%52); }
+function movableList(color){
+  const out=[];
+  for(let i=0;i<4;i++){ const p=pos[color][i];
+    if(p===-1){ if(dice===6) out.push(i); }
+    else if(p<56 && p+dice<=56) out.push(i);
+  }
+  return out;
+}
+function applyMove(color,i){
+  let p=pos[color][i];
+  const np = p===-1 ? 0 : p+dice;
+  pos[color][i]=np;
+  // capture on main track non-safe cells
+  if(np<=50 && !isSafe(color,np)){
+    const cell=cellOf(color,np);
+    for(const oc of ORDER){ if(oc===color)continue;
+      for(let j=0;j<4;j++){ const op=pos[oc][j];
+        if(op>=0&&op<=50){ const ocell=cellOf(oc,op);
+          if(ocell[0]===cell[0]&&ocell[1]===cell[1]) pos[oc][j]=-1;
+        }
+      }
+    }
+  }
+}
+function won(color){ return pos[color].every(p=>p===56); }
+
+function roll(){
+  if(phase!=='roll'||over) return;
+  dice=1+Math.floor(Math.random()*6);
+  document.getElementById('dice').textContent=dice;
+  const color=ORDER[cur];
+  movable=movableList(color);
+  if(movable.length===0){
+    updateTurn('Rolled '+dice+' — no moves'); draw();
+    document.getElementById('dice').classList.add('disabled');
+    setTimeout(()=>{ nextPlayer(); }, 900);
+  } else {
+    phase='move'; document.getElementById('dice').classList.add('disabled');
+    updateTurn('Rolled '+dice+' — tap a glowing token'); draw();
+  }
+}
+function nextPlayer(){
+  cur=(cur+1)%4; dice=null; phase='roll'; movable=[];
+  document.getElementById('dice').textContent='🎲';
+  document.getElementById('dice').classList.remove('disabled');
+  updateTurn('Roll the dice'); draw();
+}
+function samePlayerReroll(){
+  dice=null; phase='roll'; movable=[];
+  document.getElementById('dice').textContent='🎲';
+  document.getElementById('dice').classList.remove('disabled');
+  updateTurn('Rolled a 6 — roll again'); draw();
+}
+function pickToken(i){
+  if(phase!=='move'||over) return;
+  if(!movable.includes(i)) return;
+  const color=ORDER[cur], six=dice===6;
+  applyMove(color,i);
+  draw();
+  if(won(color)){ return win(color); }
+  if(six) samePlayerReroll(); else nextPlayer();
+}
+function win(color){
+  over=true;
+  const w=document.getElementById('win'); w.style.display='block';
+  w.textContent='🏆 '+cap(color)+' wins — all tokens home! A coupon would be granted here.';
+  updateTurn('Game over');
+  document.getElementById('dice').classList.add('disabled');
+}
+function cap(s){ return s[0].toUpperCase()+s.slice(1); }
+function updateTurn(m){
+  const color=ORDER[cur];
+  document.getElementById('turn').innerHTML='<span class="dot" style="background:'+COLORS[color]+'"></span>'+cap(color)+"'s turn";
+  document.getElementById('msg').textContent=m||'';
+}
+
+/* ---------- drawing ---------- */
+function px(cell){ return [cell[1]*CS+CS/2, cell[0]*CS+CS/2]; }
+function draw(){
+  ctx.fillStyle='#fbfbfd'; ctx.fillRect(0,0,450,450);
+  // corner bases
+  const bases=[['red',0,0],['green',0,9],['yellow',9,9],['blue',9,0]];
+  for(const [col,r0,c0] of bases){
+    ctx.fillStyle=COLORS[col]; roundRect(c0*CS,r0*CS,6*CS,6*CS,10); ctx.fill();
+    ctx.fillStyle='#fff'; roundRect(c0*CS+CS,r0*CS+CS,4*CS,4*CS,8); ctx.fill();
+  }
+  // path cells
+  for(let i=0;i<52;i++){ const [r,c]=PATH[i];
+    ctx.fillStyle= SAFE.has(i)?'#e9e9ef':'#fff';
+    ctx.strokeStyle='#dcdce4'; ctx.lineWidth=1;
+    roundRect(c*CS+1,r*CS+1,CS-2,CS-2,4); ctx.fill(); ctx.stroke();
+  }
+  // colour the 4 start cells + safe stars
+  for(const col of ORDER){ const [r,c]=PATH[START[col]];
+    ctx.fillStyle=COLORS[col]; roundRect(c*CS+1,r*CS+1,CS-2,CS-2,4); ctx.fill(); }
+  for(const i of SAFE){ if([0,13,26,39].includes(i))continue; const [r,c]=PATH[i];
+    ctx.fillStyle='#c8c8d2'; ctx.font='16px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('★', c*CS+CS/2, r*CS+CS/2); }
+  // home columns
+  for(const col of ORDER){ for(const [r,c] of HOME[col]){
+    ctx.fillStyle=COLORS[col]; ctx.globalAlpha=.55; roundRect(c*CS+1,r*CS+1,CS-2,CS-2,4); ctx.fill(); ctx.globalAlpha=1; } }
+  // center
+  ctx.fillStyle='#d9d9e2'; roundRect(6*CS,6*CS,3*CS,3*CS,6); ctx.fill();
+  ctx.fillStyle='#888'; ctx.font='13px Arial'; ctx.fillText('HOME',7.5*CS,7.5*CS);
+
+  // tokens
+  for(const color of ORDER){
+    for(let i=0;i<4;i++){ const p=pos[color][i];
+      let cell;
+      if(p===-1) cell=YARD[color][i];
+      else cell=cellOf(color,p);
+      const [x,y]=px(cell);
+      const glow = (ORDER[cur]===color && phase==='move' && movable.includes(i));
+      drawToken(x,y,COLORS[color],glow, p===56);
+    }
+  }
+}
+function drawToken(x,y,color,glow,done){
+  if(glow){ ctx.beginPath(); ctx.arc(x,y,13,0,7); ctx.fillStyle='rgba(79,70,229,.35)'; ctx.fill(); }
+  ctx.beginPath(); ctx.arc(x,y,9,0,7);
+  ctx.fillStyle=color; ctx.fill();
+  ctx.lineWidth=2; ctx.strokeStyle= done?'#fff':'rgba(0,0,0,.35)'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(x-2.5,y-2.5,2.5,0,7); ctx.fillStyle='rgba(255,255,255,.6)'; ctx.fill();
+}
+function roundRect(x,y,w,h,r){ ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+cv.addEventListener('click',e=>{
+  if(phase!=='move'||over) return;
+  const rect=cv.getBoundingClientRect(), sx=450/rect.width, sy=450/rect.height;
+  const mx=(e.clientX-rect.left)*sx, my=(e.clientY-rect.top)*sy;
+  const color=ORDER[cur];
+  for(const i of movable){ const p=pos[color][i];
+    const cell = p===-1?YARD[color][i]:cellOf(color,p); const [x,y]=px(cell);
+    if(Math.hypot(mx-x,my-y)<14){ pickToken(i); return; }
+  }
+});
+reset();
+</script>
+</body>
+</html>

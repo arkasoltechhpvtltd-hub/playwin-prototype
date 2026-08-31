@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlayWin — Rummy</title>
+<style>
+  :root{--bg:#eef0f4;--card:#fff;--border:#e3e5ea;--text:#1c1e26;--muted:#6b6f7a;
+    --accent:#4f46e5;--accent-text:#4338ca;--won:#187a3d;--won-bg:#e7f6ec;--red:#c0392b;}
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center;padding:20px 12px 40px;}
+  .wrap{width:100%;max-width:560px;}
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  a.back{color:var(--accent-text);text-decoration:none;font-size:14px;font-weight:500;}
+  .btn{font-size:13px;font-weight:500;padding:8px 14px;border-radius:9px;border:1px solid var(--border);
+    background:var(--card);color:var(--text);cursor:pointer;}
+  .btn:hover{background:#f4f5f8;}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .btn.primary:hover{background:#443dd6;}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .banner{background:#eceafd;color:var(--accent-text);border-radius:12px;padding:10px 14px;font-size:13px;margin-bottom:12px;}
+  .win-banner{border-radius:12px;padding:12px 14px;font-size:14px;font-weight:600;margin-bottom:12px;display:none;text-align:center;}
+  .piles{display:flex;gap:14px;align-items:center;justify-content:center;margin-bottom:16px;}
+  .pile{text-align:center;}
+  .pile .lbl{font-size:11px;color:var(--muted);margin-bottom:5px;}
+  .cardback{width:52px;height:72px;border-radius:8px;background:linear-gradient(135deg,#4f46e5,#7c74f0);
+    cursor:pointer;box-shadow:0 3px 8px rgba(0,0,0,.15);border:2px solid #fff;}
+  .msg{font-size:13px;color:var(--muted);text-align:center;min-height:18px;margin-bottom:12px;}
+  .handwrap .lbl{font-size:12px;color:var(--muted);margin-bottom:8px;}
+  .hand{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;}
+  .card{width:44px;height:62px;border-radius:7px;background:#fff;border:1px solid var(--border);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;
+    font-weight:700;font-size:15px;box-shadow:0 2px 5px rgba(0,0,0,.08);transition:.1s;position:relative;}
+  .card.sel{transform:translateY(-8px);border-color:var(--accent);box-shadow:0 6px 14px rgba(79,70,229,.3);}
+  .card.red{color:var(--red);} .card.black{color:#222;}
+  .card .suit{font-size:16px;}
+  .card.joker{background:#fff7e6;border-color:#e0a020;}
+  .card .j{position:absolute;top:2px;right:3px;font-size:8px;color:#e0a020;}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .foot{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.6;}
+  .groupnote{font-size:12px;color:var(--muted);margin-top:4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a class="back" href="../index.html">← PlayWin</a>
+    <button class="btn" onclick="deal()">New game</button></div>
+  <div class="banner">🃏 Form 13 cards into sequences and sets, with at least one pure run (no joker). Draw a card, then discard one. Declare when your hand is valid to win a coupon.</div>
+  <div class="win-banner" id="win"></div>
+
+  <div class="piles">
+    <div class="pile"><div class="lbl">Deck</div><div class="cardback" id="deck" onclick="drawDeck()"></div></div>
+    <div class="pile"><div class="lbl">Discard</div><div id="discard"></div></div>
+  </div>
+  <div class="msg" id="msg">Your turn — draw from the deck or the discard pile.</div>
+
+  <div class="handwrap">
+    <div class="lbl">Your hand · wild joker: <b id="wild">—</b></div>
+    <div class="hand" id="hand"></div>
+    <div class="groupnote">Tap two cards to swap their order and arrange your runs. Tap the discard slot after drawing to throw a card.</div>
+    <div class="controls">
+      <button class="btn" id="sortBtn" onclick="sortHand()">Sort</button>
+      <button class="btn primary" id="declareBtn" onclick="declare()" disabled>Declare</button>
+    </div>
+  </div>
+  <div class="foot">You're playing against a simple bot. A valid declaration needs all 13 cards grouped into sequences (3+ consecutive same-suit cards) and sets (3–4 same-rank different-suit cards), including at least one <b>pure</b> sequence with no joker. Jokers (and the wild card) substitute for any card.</div>
+</div>
+<script>
+const SUITS=['♠','♥','♦','♣'], RED=new Set(['♥','♦']);
+const RANKS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+const RVAL={A:1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,J:11,Q:12,K:13};
+let deck, hand, discardPile, wild, phase, selected, over, msgEl;
+
+function makeDeck(){
+  const d=[];
+  for(let k=0;k<2;k++){ for(const s of SUITS) for(const r of RANKS) d.push({s,r,joker:false,id:s+r+k}); }
+  d.push({s:'',r:'JKR',joker:true,id:'JK1'}); d.push({s:'',r:'JKR',joker:true,id:'JK2'});
+  return d;
+}
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function deal(){
+  deck=shuffle(makeDeck());
+  hand=deck.splice(0,13);
+  const w=deck.splice(0,1)[0]; wild=w.joker?null:w.r; // wild rank; if joker drawn, no wild rank
+  discardPile=[deck.splice(0,1)[0]];
+  phase='draw'; selected=[]; over=false;
+  document.getElementById('win').style.display='none';
+  document.getElementById('wild').textContent = wild? wild : 'Joker';
+  document.getElementById('declareBtn').disabled=true;
+  setMsg('Your turn — draw from the deck or the discard pile.');
+  sortHand(); render();
+}
+function isWild(c){ return c.joker || (wild && c.r===wild); }
+
+function render(){
+  // discard
+  const dc=document.getElementById('discard'); dc.innerHTML='';
+  const top=discardPile[discardPile.length-1];
+  if(top){ const el=cardEl(top); el.onclick=()=>drawDiscard(); dc.appendChild(el); }
+  else { const e=document.createElement('div'); e.className='cardback'; e.style.background='#e3e5ea'; dc.appendChild(e); }
+  // hand
+  const h=document.getElementById('hand'); h.innerHTML='';
+  hand.forEach((c,i)=>{ const el=cardEl(c); if(selected.includes(i)) el.classList.add('sel');
+    el.onclick=()=>tapCard(i); h.appendChild(el); });
+  document.getElementById('declareBtn').disabled = !(phase==='discard'||phase==='draw') || hand.length!==13 || over;
+}
+function cardEl(c){
+  const el=document.createElement('div'); el.className='card '+(c.joker?'joker ':'')+(RED.has(c.s)?'red':'black');
+  if(c.joker){ el.innerHTML='<div class="suit">★</div><div style="font-size:10px">JOKER</div>'; return el; }
+  el.innerHTML='<div>'+c.r+'</div><div class="suit">'+c.s+'</div>';
+  if(isWild(c)&&!c.joker){ const j=document.createElement('div'); j.className='j'; j.textContent='W'; el.appendChild(j); }
+  return el;
+}
+function setMsg(m){ document.getElementById('msg').textContent=m; }
+
+function drawDeck(){
+  if(phase!=='draw'||over) return;
+  if(!deck.length){ deck=shuffle(discardPile.splice(0,discardPile.length-1)); }
+  hand.push(deck.splice(0,1)[0]); phase='discard';
+  setMsg('Now tap a card in your hand, then tap the discard pile to throw it.');
+  render();
+}
+function drawDiscard(){
+  if(phase==='draw'&&!over){ hand.push(discardPile.pop()); phase='discard';
+    setMsg('Now tap a card in your hand, then tap the discard pile to throw it.'); render(); return; }
+  // if in discard phase and one card selected, throw it
+  if(phase==='discard'&&selected.length===1&&!over){ throwCard(selected[0]); }
+}
+function tapCard(i){
+  if(over) return;
+  if(phase==='discard'){
+    // select single card to discard
+    selected = selected[0]===i ? [] : [i];
+    render(); 
+    if(selected.length===1) setMsg('Tap the discard pile to throw the selected card.');
+    return;
+  }
+  // arrange mode (draw phase): tap two to swap
+  if(selected.length&&selected[0]!==i){
+    const a=selected[0]; [hand[a],hand[i]]=[hand[i],hand[a]]; selected=[]; render(); return;
+  }
+  selected = selected[0]===i ? [] : [i]; render();
+}
+function throwCard(i){
+  discardPile.push(hand.splice(i,1)[0]); selected=[]; phase='draw';
+  render(); botTurn();
+}
+function sortHand(){
+  hand.sort((a,b)=>{ if(a.joker!==b.joker) return a.joker?1:-1;
+    if(a.s!==b.s) return SUITS.indexOf(a.s)-SUITS.indexOf(b.s); return RVAL[a.r]-RVAL[b.r]; });
+  selected=[]; render();
+}
+
+/* ---- declaration validator ---- */
+function validRummy(cards){
+  if(cards.length!==13) return false;
+  // try to partition into groups (sequences/sets) covering all 13, with >=1 pure sequence
+  return partition(cards.slice(), false);
+}
+// greedy+backtracking: pick the first card, try every valid group containing it
+function partition(cards, hasPure){
+  if(cards.length===0) return hasPure;
+  // pivot on the first NON-wild card so wilds (fillers) don't break progress
+  let pivot = cards.find(c=>!(c.joker||isWild(c)));
+  if(!pivot){ // all remaining are wilds: a group of 3-4 wilds counts as an (impure) set
+    return (cards.length>=3 && cards.length<=4) ? hasPure : false;
+  }
+  const groups=candidateGroups(cards);
+  for(const g of groups){
+    if(!g.cards.includes(pivot)) continue;
+    const rest=cards.filter(c=>!g.cards.includes(c));
+    if(partition(rest, hasPure || g.pure)) return true;
+  }
+  return false;
+}
+function candidateGroups(cards){
+  const res=[];
+  // SETS: same rank, distinct suits, size 3-4 (jokers can fill)
+  const byRank={};
+  for(const c of cards){ if(c.joker||isWild(c)) continue; (byRank[c.r]=byRank[c.r]||[]).push(c); }
+  const wilds=cards.filter(c=>c.joker||isWild(c));
+  for(const r in byRank){
+    const distinct=[]; const seenS=new Set();
+    for(const c of byRank[r]){ if(!seenS.has(c.s)){ seenS.add(c.s); distinct.push(c); } }
+    for(let size=3;size<=4;size++){
+      // choose (size - w) natural + w wilds
+      for(let w=0; w<=Math.min(wilds.length,size-1); w++){
+        const need=size-w;
+        if(distinct.length>=need){
+          const nat=distinct.slice(0,need);
+          const grp=nat.concat(wilds.slice(0,w));
+          res.push({cards:grp, pure:false}); // sets are never "pure sequence"
+        }
+      }
+    }
+  }
+  // SEQUENCES: same suit, consecutive ranks, size 3+ (allow wild fills; pure if no wild)
+  const bySuit={};
+  for(const c of cards){ if(c.joker) continue; if(isWild(c)) continue; (bySuit[c.s]=bySuit[c.s]||[]).push(c); }
+  for(const s in bySuit){
+    const arr=bySuit[s].slice().sort((a,b)=>RVAL[a.r]-RVAL[b.r]);
+    // unique by rank (a run can't use two same-rank same-suit)
+    const uniq=[]; const seen=new Set();
+    for(const c of arr){ if(!seen.has(c.r)){ seen.add(c.r); uniq.push(c); } }
+    // try every contiguous window as a base, filling gaps with wilds; also allow A as 1 (already) 
+    for(let i=0;i<uniq.length;i++){
+      let run=[uniq[i]]; let gaps=0; let last=RVAL[uniq[i].r];
+      // pure runs first: extend consecutive with no gaps
+      let pureRun=[uniq[i]];
+      for(let j=i+1;j<uniq.length;j++){
+        if(RVAL[uniq[j].r]===last+1){ pureRun.push(uniq[j]); last=RVAL[uniq[j].r];
+          if(pureRun.length>=3) res.push({cards:pureRun.slice(), pure:true});
+        } else break;
+      }
+    }
+    // wild-assisted sequences: try windows and fill single/double gaps with wilds
+    const wilds=cards.filter(c=>c.joker||isWild(c));
+    for(let i=0;i<uniq.length;i++){
+      for(let len=3;len<=13;len++){
+        // window from uniq[i] spanning ranks [base, base+len-1]
+        const base=RVAL[uniq[i].r]; const top=base+len-1; if(top>13) break;
+        const present=[]; let ok=true;
+        for(let v=base; v<=top; v++){
+          const found=uniq.find(c=>RVAL[c.r]===v);
+          if(found) present.push(found); else present.push(null);
+        }
+        const missing=present.filter(x=>x===null).length;
+        const naturalCount=present.filter(x=>x).length;
+        if(naturalCount<2) continue;              // need at least 2 naturals for a wild seq
+        if(missing<=wilds.length && missing>0){
+          const grp=present.filter(x=>x).concat(wilds.slice(0,missing));
+          if(grp.length>=3) res.push({cards:grp, pure:false});
+        }
+      }
+    }
+  }
+  return res;
+}
+
+function declare(){
+  if(over) return;
+  if(hand.length!==13){ setMsg('You must have 13 cards to declare (draw then discard first).'); return; }
+  if(validRummy(hand)){ finish(true); }
+  else { setMsg('Not a valid declaration yet — you need valid groups incl. one pure sequence.'); }
+}
+function finish(playerWon){
+  over=true;
+  const w=document.getElementById('win'); w.style.display='block';
+  if(playerWon){ w.style.background='var(--won-bg)'; w.style.color='var(--won)';
+    w.textContent='🏆 Valid rummy — you win! A coupon would be granted here.'; }
+  else { w.style.background='#fbeaea'; w.style.color='var(--red)';
+    w.textContent='The bot declared a valid hand and won this round.'; }
+  setMsg('Round over — tap New game.');
+  render();
+}
+
+/* ---- simple bot: draws and discards; small chance to "declare" only if it truly can ---- */
+let botHand=null;
+function botTurn(){
+  setMsg("Bot's turn…");
+  setTimeout(()=>{
+    // bot draws from deck, discards a random card; it declares only if its (hidden) hand is valid
+    if(!deck.length){ deck=shuffle(discardPile.splice(0,discardPile.length-1)); }
+    // maintain a hidden bot hand for realism
+    if(!botHand){ botHand=deck.splice(0,13); }
+    botHand.push(deck.splice(0,1)[0]);
+    // discard the card that looks least useful (random for prototype)
+    const di=Math.floor(Math.random()*botHand.length);
+    discardPile.push(botHand.splice(di,1)[0]);
+    if(validRummy(botHand)){ return finish(false); }
+    phase='draw'; setMsg('Your turn — draw from the deck or the discard pile.'); render();
+  }, 700);
+}
+deal();
+</script>
+</body>
+</html>
