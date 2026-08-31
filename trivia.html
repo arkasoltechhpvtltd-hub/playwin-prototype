@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlayWin — Trivia</title>
+<style>
+  :root{--bg:#eef0f4;--card:#fff;--border:#e3e5ea;--text:#1c1e26;--muted:#6b6f7a;
+    --accent:#4f46e5;--accent-bg:#eceafd;--accent-text:#4338ca;
+    --right:#187a3d;--right-bg:#e7f6ec;--wrong:#c0392b;--wrong-bg:#fbeaea;}
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center;padding:20px 12px 40px;}
+  .wrap{width:100%;max-width:440px;}
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+  a.back{color:var(--accent-text);text-decoration:none;font-size:14px;font-weight:500;}
+  .prog{font-size:13px;color:var(--muted);}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px 20px;
+    box-shadow:0 8px 26px rgba(20,22,30,.08);}
+  .q{font-size:18px;font-weight:600;margin-bottom:18px;line-height:1.4;}
+  .opt{display:block;width:100%;text-align:left;background:var(--bg);border:1px solid var(--border);
+    border-radius:11px;padding:13px 15px;font-size:15px;margin-bottom:10px;cursor:pointer;color:var(--text);
+    transition:.12s;}
+  .opt:hover{border-color:var(--accent);}
+  .opt.right{background:var(--right-bg);border-color:var(--right);color:var(--right);font-weight:600;}
+  .opt.wrong{background:var(--wrong-bg);border-color:var(--wrong);color:var(--wrong);}
+  .opt:disabled{cursor:default;}
+  .next{width:100%;background:var(--accent);color:#fff;border:none;border-radius:11px;padding:13px;
+    font-size:15px;font-weight:500;margin-top:6px;cursor:pointer;display:none;}
+  .final{text-align:center;padding:10px 0;}
+  .final .score{font-size:40px;font-weight:700;color:var(--accent-text);margin:8px 0;}
+  .final .verdict{font-size:15px;margin-bottom:16px;}
+  .win{background:var(--right-bg);color:var(--right);border-radius:12px;padding:12px;font-weight:600;font-size:14px;margin-bottom:16px;}
+  .foot{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.6;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a class="back" href="../index.html">← PlayWin</a>
+    <span class="prog" id="prog"></span></div>
+  <div class="card" id="card"></div>
+  <div class="foot">Answer 5 questions. Get 4 or more right to win a coupon. In the real app you'd play head-to-head and the server would check every answer.</div>
+</div>
+<script>
+const BANK=[
+  {q:"Which city hosts the headquarters of ISRO?",o:["Bengaluru","New Delhi","Hyderabad","Chennai"],a:0},
+  {q:"How many players are on a cricket team on the field?",o:["9","10","11","12"],a:2},
+  {q:"Which planet is known as the Red Planet?",o:["Venus","Mars","Jupiter","Mercury"],a:1},
+  {q:"What is the capital of Australia?",o:["Sydney","Melbourne","Canberra","Perth"],a:2},
+  {q:"Who wrote the play 'Romeo and Juliet'?",o:["Dickens","Shakespeare","Tolstoy","Austen"],a:1},
+  {q:"Which is the largest ocean on Earth?",o:["Atlantic","Indian","Arctic","Pacific"],a:3},
+  {q:"What does 'CPU' stand for?",o:["Central Process Unit","Central Processing Unit","Computer Personal Unit","Central Power Unit"],a:1},
+  {q:"Which Indian state is known as the 'Land of Five Rivers'?",o:["Punjab","Kerala","Gujarat","Assam"],a:0},
+  {q:"In which year did India gain independence?",o:["1942","1945","1947","1950"],a:2},
+  {q:"What is the chemical symbol for gold?",o:["Gd","Au","Ag","Go"],a:1},
+  {q:"How many continents are there on Earth?",o:["5","6","7","8"],a:2},
+  {q:"Which animal is the largest mammal?",o:["Elephant","Blue whale","Giraffe","Hippo"],a:1},
+];
+let quiz, idx, score;
+const card=document.getElementById('card');
+
+function start(){
+  quiz=[...BANK].sort(()=>Math.random()-0.5).slice(0,5);
+  idx=0; score=0; renderQ();
+}
+function renderQ(){
+  document.getElementById('prog').textContent='Question '+(idx+1)+' of 5 · Score '+score;
+  const item=quiz[idx];
+  card.innerHTML='<div class="q">'+item.q+'</div>';
+  item.o.forEach((opt,i)=>{
+    const b=document.createElement('button');
+    b.className='opt'; b.textContent=opt; b.onclick=()=>answer(i,b);
+    card.appendChild(b);
+  });
+  const nx=document.createElement('button');
+  nx.className='next'; nx.id='next';
+  nx.textContent = idx<4?'Next question':'See result';
+  nx.onclick=()=>{ idx++; idx<5?renderQ():final(); };
+  card.appendChild(nx);
+}
+function answer(i,btn){
+  const item=quiz[idx];
+  const opts=card.querySelectorAll('.opt');
+  opts.forEach((o,k)=>{ o.disabled=true;
+    if(k===item.a) o.classList.add('right');
+    if(k===i && i!==item.a) o.classList.add('wrong');
+  });
+  if(i===item.a) score++;
+  document.getElementById('prog').textContent='Question '+(idx+1)+' of 5 · Score '+score;
+  document.getElementById('next').style.display='block';
+}
+function final(){
+  const won=score>=4;
+  card.innerHTML='<div class="final"><div>You scored</div>'+
+    '<div class="score">'+score+' / 5</div>'+
+    (won?'<div class="win">🏆 You won! A coupon would be granted here.</div>'
+        :'<div class="verdict">So close — get 4 or more next time to win a coupon.</div>')+
+    '<button class="next" style="display:block" onclick="start()">Play again</button></div>';
+}
+start();
+</script>
+</body>
+</html>
