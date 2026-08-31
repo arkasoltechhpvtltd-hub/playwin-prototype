@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlayWin — Word Hunt</title>
+<style>
+  :root{--bg:#eef0f4;--card:#fff;--border:#e3e5ea;--text:#1c1e26;--muted:#6b6f7a;
+    --accent:#4f46e5;--accent-bg:#eceafd;--accent-text:#4338ca;--won:#187a3d;--won-bg:#e7f6ec;--sel:#c7d2fe;}
+  *{box-sizing:border-box;}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center;padding:20px 12px 40px;}
+  .wrap{width:100%;max-width:420px;}
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  a.back{color:var(--accent-text);text-decoration:none;font-size:14px;font-weight:500;}
+  .btn{font-size:13px;font-weight:500;padding:8px 14px;border-radius:9px;border:1px solid var(--border);
+    background:var(--card);color:var(--text);cursor:pointer;}
+  .banner{background:var(--accent-bg);color:var(--accent-text);border-radius:12px;padding:10px 14px;
+    font-size:13px;margin-bottom:12px;}
+  .win-banner{background:var(--won-bg);color:var(--won);border-radius:12px;padding:12px 14px;
+    font-size:14px;font-weight:600;margin-bottom:12px;display:none;text-align:center;}
+  .grid{display:grid;gap:4px;margin-bottom:14px;}
+  .cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:var(--card);
+    border:1px solid var(--border);border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;
+    user-select:none;transition:.08s;}
+  .cell.sel{background:var(--sel);}
+  .cell.found{background:var(--won-bg);color:var(--won);border-color:var(--won);}
+  .words{display:flex;flex-wrap:wrap;gap:8px;}
+  .word{font-size:13px;padding:5px 11px;border-radius:20px;background:var(--card);border:1px solid var(--border);}
+  .word.done{background:var(--won-bg);color:var(--won);border-color:var(--won);text-decoration:line-through;}
+  .foot{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.6;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a class="back" href="../index.html">← PlayWin</a>
+    <button class="btn" onclick="build()">New puzzle</button></div>
+  <div class="banner">🔤 Tap the first and last letter of a word to select it. Find every word in the list to win a coupon.</div>
+  <div class="win-banner" id="win"></div>
+  <div class="grid" id="grid"></div>
+  <div class="words" id="words"></div>
+  <div class="foot">Words run left-to-right or top-to-bottom. Tap a start letter, then the end letter — if they line up on a listed word, it's found.</div>
+</div>
+<script>
+const N=9;
+const WORDLIST=["LUDO","CHESS","CARROM","TRIVIA","BINGO","RUMMY","COUPON","WINNER","PLAYER","POCKET","BOARD","SCORE","TOKEN","GAMES"];
+let grid, words, found, first, over;
+const gEl=document.getElementById('grid'), wEl=document.getElementById('words');
+
+function build(){
+  gEl.style.gridTemplateColumns='repeat('+N+',1fr)';
+  grid=Array.from({length:N},()=>Array(N).fill(''));
+  words=[]; found=new Set(); first=null; over=false;
+  document.getElementById('win').style.display='none';
+  // pick 6 words that fit
+  const pick=[...WORDLIST].filter(w=>w.length<=N).sort(()=>Math.random()-0.5).slice(0,6);
+  for(const w of pick){ if(!place(w)) {/* skip if fails */} }
+  // fill blanks
+  const A='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++) if(!grid[r][c]) grid[r][c]=A[Math.floor(Math.random()*26)];
+  render();
+}
+function place(w){
+  for(let tries=0;tries<60;tries++){
+    const horiz=Math.random()<0.5;
+    const len=w.length;
+    const r=Math.floor(Math.random()*(horiz?N:N-len+1));
+    const c=Math.floor(Math.random()*(horiz?N-len+1:N));
+    let ok=true;
+    for(let i=0;i<len;i++){ const rr=horiz?r:r+i, cc=horiz?c+i:c;
+      if(grid[rr][cc] && grid[rr][cc]!==w[i]){ ok=false;break; } }
+    if(!ok)continue;
+    const cells=[];
+    for(let i=0;i<len;i++){ const rr=horiz?r:r+i, cc=horiz?c+i:c; grid[rr][cc]=w[i]; cells.push([rr,cc]); }
+    words.push({w,cells,r,c,horiz,len}); return true;
+  }
+  return false;
+}
+function render(){
+  gEl.innerHTML='';
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+    const d=document.createElement('div'); d.className='cell'; d.textContent=grid[r][c];
+    d.dataset.r=r; d.dataset.c=c; d.onclick=()=>tap(r,c,d);
+    if([...found].some(fw=>fw.cells.some(([fr,fc])=>fr===r&&fc===c))) d.classList.add('found');
+    gEl.appendChild(d);
+  }
+  wEl.innerHTML='';
+  for(const wd of words){ const s=document.createElement('span');
+    s.className='word'+(found.has(wd)?' done':''); s.textContent=wd.w; wEl.appendChild(s); }
+}
+function tap(r,c,el){
+  if(over)return;
+  if(!first){ first=[r,c]; el.classList.add('sel'); return; }
+  const [fr,fc]=first;
+  // clear selection highlight
+  document.querySelectorAll('.cell.sel').forEach(x=>x.classList.remove('sel'));
+  // must be same row or same col
+  const match=words.find(wd=>{
+    if(found.has(wd))return false;
+    const cs=wd.cells, a=cs[0], b=cs[cs.length-1];
+    const hitA=(a[0]===fr&&a[1]===fc)&&(b[0]===r&&b[1]===c);
+    const hitB=(b[0]===fr&&b[1]===fc)&&(a[0]===r&&a[1]===c);
+    return hitA||hitB;
+  });
+  first=null;
+  if(match){ found.add(match); render(); if(found.size===words.length) win(); }
+}
+function win(){
+  over=true;
+  const w=document.getElementById('win'); w.style.display='block';
+  w.textContent='🏆 All words found — a coupon would be granted here!';
+}
+build();
+</script>
+</body>
+</html>
